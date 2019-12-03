@@ -1,0 +1,7 @@
+{
+    "username":"",
+    "password":"",
+    "developerkey":"",
+    "remoteit_baseurl":"https://api.remot3.it",
+    "SSH_template":"ssh -p ${PORT} pi@${HOST} -L 5900:127.0.0.1:5900  -L 8800:192.168.30.1:80 -L 8801:192.168.30.189:80 -o \"UserKnownHostsFile /dev/null\""
+}
