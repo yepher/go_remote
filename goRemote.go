@@ -1,10 +1,19 @@
 package main
 
+/**
+	TODO:
+	   * Current error handling is to panic and spit out the error. Probably should be a little more helpful than that to the user
+	   * Currenly only SSH device is support. Not sure what other devices should be handled but tried to make the code easy to add additional devices
+	   * Add ability to close a connection
+	   * Add command line option to specify IP address
+**/
+
 import (
 	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -24,7 +33,7 @@ func main() {
 
 	home, err := os.UserHomeDir()
 	configPath := fmt.Sprintf("%s/.goremote/config.json", home)
-	// TODO: handle initial bootstrap config
+	fmt.Printf("Loading %s\n", configPath)
 
 	configuration := Configuration{}
 	err = gonfig.GetConf(configPath, &configuration)
@@ -35,6 +44,8 @@ func main() {
 	/**
 	* Do Login
 	**/
+	fmt.Printf("Doing Login\n")
+
 	loginResponse := &LoginResponse{}
 
 	{
@@ -54,21 +65,17 @@ func main() {
 
 		defer res.Body.Close()
 
-		fmt.Println("response Status:", res.Status)
-
 		json.NewDecoder(res.Body).Decode(loginResponse)
-		//fmt.Printf("%+v\n", loginResponse)
 	}
 
-	//token := loginResponse.Token
 	configuration.Token = loginResponse.Token
-	//fmt.Printf("Got Token: %s", configuration.Token)
 
 	/**
 	 * Get Device List
 	 **/
-	deviceListResponse := &DeviceListResponse{}
+	fmt.Printf("Loading Device List\n")
 
+	deviceListResponse := &DeviceListResponse{}
 	{
 		url := fmt.Sprintf("%s%s", configuration.BaseURL, DeviceListPath)
 		req, err := buildRequest(url, nil, configuration)
@@ -81,35 +88,33 @@ func main() {
 
 		defer res.Body.Close()
 
-		//fmt.Println("response Status:", res.Status)
-
 		json.NewDecoder(res.Body).Decode(deviceListResponse)
-		//fmt.Printf("%+v\n", deviceListResponse)
 	}
 
 	if *deviceName == "" {
 		fmt.Printf("\n\nFound %d devices:\n", len(deviceListResponse.Devices))
 		for _, device := range deviceListResponse.Devices {
-			fmt.Printf("\t Device: %s\n", device.DeviceAlias)
+			fmt.Printf("\tCMD: goRemote -device=\"%s\"\n", device.DeviceAlias)
 			fmt.Printf("\t\t%s_template\n", device.ServiceTitle)
 			fmt.Printf("\t\t%s\n", device.DeviceAddress)
 		}
 	} else {
 		for _, device := range deviceListResponse.Devices {
 			if device.DeviceAlias == *deviceName {
+				fmt.Printf("Connecting to \"%s\"\n", device.DeviceAlias)
 				/**
 				 * Generate connect string for device user passed in
 				 **/
 				connectResponse := &ConnectResponse{}
 				{
 					myIP := getMyIP()
+					fmt.Printf("\tHostIP: %s\n\tDeviceAddress: %s\n", myIP, device.DeviceAddress)
 
 					connectRequest := &ConnectRequest{
 						Wait:          "true",
 						DeviceAddress: device.DeviceAddress,
 						HostIP:        myIP,
 					}
-					fmt.Printf("\n-------\n%+v\n-------\n", connectRequest)
 
 					url := fmt.Sprintf("%s%s", configuration.BaseURL, ConnectPath)
 					req, err := buildRequest(url, connectRequest, configuration)
@@ -122,46 +127,51 @@ func main() {
 
 					defer res.Body.Close()
 
-					fmt.Println("\nresponse Status:", res.Status)
-
 					json.NewDecoder(res.Body).Decode(connectResponse)
-					fmt.Printf("\n-------\n%+v\n-------\n", connectResponse)
-					fmt.Printf("\nCONFIGURATION:\n-------\n%+v\n-------\n", configuration)
 
 					template := fmt.Sprintf("%sTemplate", device.ServiceTitle)
-					fmt.Printf("Template Key: \"%s\"\n", template)
 					value, err := reflections.GetField(configuration, template)
 					if err != nil {
 						panic(err)
 					}
 
-					// ====================
-
-					fmt.Println("Raw Template: %s\n", value)
 					cmd := fmt.Sprintf("%s", value)
 
+					// TODO: I guess there should be a way to "close" the connection with the connection-id
+					//    https://docs.remote.it/api-reference/devices/device-connect-stop
 					fmt.Printf("\nConection-Id: %s\n", connectResponse.ConnectionId)
 
 					result := strings.Replace(cmd, "${PORT}", connectResponse.Connection.ProxyPort, -1)
 					result = strings.Replace(result, "${HOST}", connectResponse.Connection.ProxyServer, -1)
 
 					fmt.Printf("%s\n", result)
-
 				}
 			}
 		}
 	}
 }
 
+/**
+ * This is some random service so may need a plug in a different one later
+ **/
 func getMyIP() string {
-	// res, err := http.Get("icanhazip.com")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// defer res.Body.Close()
+	res, err := http.Get("http://icanhazip.com")
+	if err != nil {
+		panic(err)
+	}
+	defer res.Body.Close()
 
-	// return fmt.Sprintf("%s", res.Body)
-	return "24.13.192.107"
+	if res.StatusCode == http.StatusOK {
+		bodyBytes, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			panic(err)
+		}
+		bodyString := string(bodyBytes)
+
+		return strings.TrimSpace(bodyString)
+	}
+
+	return ""
 }
 
 func buildRequest(url string, obj interface{}, configuration Configuration) (*http.Request, error) {

@@ -2,7 +2,9 @@
 
 [Remote.it/](https://remote.it/) is a nice service for getting access to your network without being able to punch a hole in the your firewall.
 
-It is sort of a pain to have to open the web browser to setup the connection. So this is a quickly thrown together GoLang code to setup the connection and output my preferred SSH command with arguments.
+It is sort of a pain to have to open the web browser to setup the connection. So this is some quickly thrown together GoLang code with [remote.it's API](https://docs.remote.it/api-reference/overview) to setup the connection and output my preferred SSH command with arguments.
+
+I've tested and use it on Mac and Linux. I assume it would need some "tweaking" to make it work on Windows but may work with Cygwin.
 
 ## Setup
 
@@ -38,5 +40,7 @@ go get gopkg.in/oleiade/reflections.v1
 # Building
 go build -o goRemot
 ```
+
+
 
 
